@@ -1,0 +1,192 @@
+
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APEX RACING</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#080d16;color:white;font-family:Arial}
+#hud{position:fixed;top:18px;left:18px;z-index:2;background:#101827dd;padding:18px;border:1px solid #159dff;border-radius:12px}
+h1{color:#159dff;margin:0 0 8px}
+#speed{font-size:27px;font-weight:bold}
+#camera{color:#55c5ff;margin-top:8px}
+#help{position:fixed;bottom:15px;left:15px;background:#101827dd;padding:12px;border-radius:8px;z-index:2;line-height:1.6}
+</style>
+</head>
+<body>
+<div id="hud">
+<h1>APEX RACING</h1>
+<div>HASTIGHET</div>
+<div id="speed">0 km/h</div>
+<div id="camera">THIRD PERSON</div>
+</div>
+<div id="help">
+WASD / pilar = Kör<br>
+C = Byt kamera<br>
+R = Återställ bilen
+</div>
+
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x91b9d6);
+scene.fog=new THREE.Fog(0x91b9d6,90,260);
+
+const camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,600);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x536044,2));
+const sun=new THREE.DirectionalLight(0xffffff,2.5);
+sun.position.set(-40,80,30);
+sun.castShadow=true;
+scene.add(sun);
+
+const ground=new THREE.Mesh(
+new THREE.PlaneGeometry(500,500),
+new THREE.MeshStandardMaterial({color:0x477447}));
+ground.rotation.x=-Math.PI/2;
+ground.position.y=-.15;
+scene.add(ground);
+
+// Racing circuit
+const road=new THREE.Mesh(
+new THREE.RingGeometry(24,42,128),
+new THREE.MeshStandardMaterial({color:0x292d33,side:THREE.DoubleSide}));
+road.rotation.x=-Math.PI/2;
+scene.add(road);
+
+// Track markings
+const line=new THREE.Mesh(
+new THREE.RingGeometry(32.7,33.1,128),
+new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide}));
+line.rotation.x=-Math.PI/2;
+line.position.y=.03;
+scene.add(line);
+
+// Car
+const car=new THREE.Group();
+scene.add(car);
+
+const paint=new THREE.MeshStandardMaterial({
+color:0x087cff,metalness:.7,roughness:.25
+});
+const glass=new THREE.MeshStandardMaterial({
+color:0x142d45,metalness:.5,roughness:.15
+});
+
+const body=new THREE.Mesh(new THREE.BoxGeometry(2.2,.65,4.4),paint);
+body.position.y=.8;
+car.add(body);
+
+const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.65,.8,2),glass);
+cabin.position.set(0,1.48,-.2);
+car.add(cabin);
+
+const wheels=[];
+for(const x of [-1.15,1.15]){
+for(const z of [-1.4,1.4]){
+const w=new THREE.Mesh(
+new THREE.CylinderGeometry(.48,.48,.32,24),
+new THREE.MeshStandardMaterial({color:0x111111}));
+w.rotation.z=Math.PI/2;
+w.position.set(x,.48,z);
+car.add(w);
+wheels.push(w);
+}
+}
+
+car.position.set(0,0,32);
+
+// Interior camera position
+const cockpit=new THREE.Object3D();
+cockpit.position.set(0,1.55,.15);
+car.add(cockpit);
+
+let speed=0;
+let steering=0;
+let firstPerson=false;
+const keys={};
+
+addEventListener('keydown',e=>{
+keys[e.key.toLowerCase()]=true;
+if(e.key.toLowerCase()==='c'&&!e.repeat){
+firstPerson=!firstPerson;
+document.getElementById('camera').textContent=
+firstPerson?'FIRST PERSON':'THIRD PERSON';
+}
+if(e.key.toLowerCase()==='r'){
+car.position.set(0,0,32);
+car.rotation.y=0;
+speed=0;
+}
+});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+function animate(){
+requestAnimationFrame(animate);
+
+const forward=keys.w||keys.arrowup;
+const backward=keys.s||keys.arrowdown;
+const left=keys.a||keys.arrowleft;
+const right=keys.d||keys.arrowright;
+
+if(forward)speed+=.012;
+else if(backward)speed-=.012;
+else speed*=.985;
+
+speed=Math.max(-.35,Math.min(1.1,speed));
+
+if(left)steering=Math.min(steering+.035,.55);
+else if(right)steering=Math.max(steering-.035,-.55);
+else steering*=.85;
+
+car.rotation.y+=steering*speed*.045;
+car.position.x-=Math.sin(car.rotation.y)*speed;
+car.position.z-=Math.cos(car.rotation.y)*speed;
+
+wheels.forEach(w=>w.rotation.x+=speed*.08);
+
+if(firstPerson){
+// Camera inside the car
+const worldPos=new THREE.Vector3();
+cockpit.getWorldPosition(worldPos);
+camera.position.copy(worldPos);
+const look=new THREE.Vector3(0,0,-20);
+look.applyQuaternion(car.quaternion);
+camera.lookAt(worldPos.clone().add(look));
+}else{
+// Camera behind the car
+const target=new THREE.Vector3(
+car.position.x+Math.sin(car.rotation.y)*10,
+car.position.y+5,
+car.position.z+Math.cos(car.rotation.y)*10
+);
+camera.position.lerp(target,.09);
+camera.lookAt(car.position.x,1,car.position.z);
+}
+
+document.getElementById('speed').textContent=
+Math.round(Math.abs(speed)*180)+' km/h';
+
+renderer.render(scene,camera);
+}
+
+camera.position.set(0,7,43);
+animate();
+
+addEventListener('resize',()=>{
+camera.aspect=innerWidth/innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
