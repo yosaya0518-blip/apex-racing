@@ -1,0 +1,179 @@
+
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APEX RACING</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #080b12;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+    #hud {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      z-index: 2;
+      background: #101827dd;
+      padding: 16px 22px;
+      border: 1px solid #28aaff;
+      border-radius: 12px;
+    }
+    #hud h1 { margin: 0 0 8px; color: #28aaff; }
+    #speed { font-size: 26px; font-weight: bold; }
+    #help {
+      position: fixed;
+      bottom: 18px;
+      left: 18px;
+      background: #101827dd;
+      padding: 12px;
+      border-radius: 8px;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <h1>APEX RACING</h1>
+    <div>HASTIGHET</div>
+    <div id="speed">0 km/h</div>
+  </div>
+  <div id="help">WASD eller piltangenter = kör<br>R = återställ bilen</div>
+
+  <script type="module">
+    import * as THREE from
+      'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87b9df);
+    scene.fog = new THREE.Fog(0x87b9df, 70, 220);
+
+    const camera = new THREE.PerspectiveCamera(
+      65, innerWidth / innerHeight, 0.1, 500
+    );
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x526044, 2));
+    const sun = new THREE.DirectionalLight(0xffffff, 2);
+    sun.position.set(-30, 60, 20);
+    scene.add(sun);
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(400, 400),
+      new THREE.MeshStandardMaterial({ color: 0x477447 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.12;
+    scene.add(ground);
+
+    const road = new THREE.Mesh(
+      new THREE.RingGeometry(24, 39, 96),
+      new THREE.MeshStandardMaterial({ color: 0x292d33, side: THREE.DoubleSide })
+    );
+    road.rotation.x = -Math.PI / 2;
+    road.position.y = 0;
+    scene.add(road);
+
+    const car = new THREE.Group();
+    scene.add(car);
+
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 0.65, 4.2),
+      new THREE.MeshStandardMaterial({ color: 0x087cff, metalness: 0.5, roughness: 0.3 })
+    );
+    body.position.y = 0.8;
+    car.add(body);
+
+    const cabin = new THREE.Mesh(
+      new THREE.BoxGeometry(1.55, 0.75, 1.9),
+      new THREE.MeshStandardMaterial({ color: 0x152b43, metalness: 0.4, roughness: 0.2 })
+    );
+    cabin.position.set(0, 1.45, -0.2);
+    car.add(cabin);
+
+    const wheels = [];
+    for (const x of [-1.15, 1.15]) {
+      for (const z of [-1.35, 1.35]) {
+        const wheel = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.48, 0.48, 0.32, 20),
+          new THREE.MeshStandardMaterial({ color: 0x111111 })
+        );
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(x, 0.48, z);
+        car.add(wheel);
+        wheels.push(wheel);
+      }
+    }
+
+    car.position.set(0, 0, 31);
+
+    const keys = {};
+    addEventListener('keydown', e => {
+      keys[e.key.toLowerCase()] = true;
+      if (e.key.toLowerCase() === 'r') {
+        car.position.set(0, 0, 31);
+        car.rotation.y = 0;
+        speed = 0;
+      }
+    });
+    addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    let speed = 0;
+    let steering = 0;
+    const speedDisplay = document.getElementById('speed');
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const forward = keys.w || keys.arrowup;
+      const backward = keys.s || keys.arrowdown;
+      const left = keys.a || keys.arrowleft;
+      const right = keys.d || keys.arrowright;
+
+      if (forward) speed += 0.012;
+      else if (backward) speed -= 0.012;
+      else speed *= 0.985;
+
+      speed = Math.max(-0.35, Math.min(1.1, speed));
+
+      const direction = Math.sign(speed);
+      if (left) steering = Math.min(steering + 0.035, 0.55);
+      else if (right) steering = Math.max(steering - 0.035, -0.55);
+      else steering *= 0.85;
+
+      car.rotation.y += steering * speed * 0.045;
+      car.position.x -= Math.sin(car.rotation.y) * speed;
+      car.position.z -= Math.cos(car.rotation.y) * speed;
+
+      wheels.forEach(w => w.rotation.x += speed * 0.08);
+
+      const target = new THREE.Vector3(
+        car.position.x + Math.sin(car.rotation.y) * 9,
+        car.position.y + 6,
+        car.position.z + Math.cos(car.rotation.y) * 9
+      );
+      camera.position.lerp(target, 0.08);
+      camera.lookAt(car.position.x, 1, car.position.z);
+
+      speedDisplay.textContent = Math.round(Math.abs(speed) * 180) + ' km/h';
+      renderer.render(scene, camera);
+    }
+
+    camera.position.set(0, 7, 42);
+    animate();
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+  </script>
+</body>
+</html>
